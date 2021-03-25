@@ -17,6 +17,7 @@ from collections import OrderedDict
 import multiprocessing
 import numpy as np
 import tensorflow as tf
+os.environ['KERAS_BACKEND']='tensorflow'
 import keras
 import keras.backend as K
 import keras.layers as KL

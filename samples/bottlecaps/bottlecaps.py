@@ -85,9 +85,15 @@ class CocoConfig(Config):
 
     # Number of classes (including background)
     NUM_CLASSES = 1 + 4  # COCO has 80 classes
-    STEPS_PER_EPOCH = 100
+
+    # Number of training steps per epoch
+    STEPS_PER_EPOCH = 200
+
+    # Skip detections with < 90% confidence
     DETECTION_MIN_CONFIDENCE = 0.9
-    VALIDATION_STEPS = 5
+
+    # use small validation steps since the epoch is small
+    VALIDATION_STEPS = 20
 
 
 ############################################################

@@ -12,7 +12,7 @@ import sys
 import random
 import itertools
 import colorsys
-
+import csv
 import numpy as np
 from skimage.measure import find_contours
 import matplotlib.pyplot as plt
@@ -82,7 +82,7 @@ def apply_mask(image, mask, color, alpha=0.5):
 
 def display_instances(image, boxes, masks, class_ids, class_names,
                       scores=None, title="",
-                      figsize=(16, 16), ax=None,
+                      figsize=(16, 16), ax=None, output_filename="",output_folder="", frame_number=None,
                       show_mask=True, show_bbox=True,
                       colors=None, captions=None):
     """
@@ -105,64 +105,102 @@ def display_instances(image, boxes, masks, class_ids, class_names,
         assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
 
     # If no axis is passed, create one and automatically call show()
-    auto_show = False
+    auto_show = True
     if not ax:
         _, ax = plt.subplots(1, figsize=figsize)
         auto_show = True
 
     # Generate random colors
-    colors = colors or random_colors(N)
+    colors = colors or random_colors(4)
 
     # Show area outside image boundaries.
     height, width = image.shape[:2]
     ax.set_ylim(height + 10, -10)
     ax.set_xlim(-10, width + 10)
-    ax.axis('off')
+    ax.axis()
     ax.set_title(title)
 
     masked_image = image.astype(np.uint32).copy()
+    BD_counter = 0
+    BFD_counter = 0
+    BFU_counter = 0
+    rows_to_write = []
     for i in range(N):
-        color = colors[i]
+        # color = colors[i]
 
         # Bounding box
-        if not np.any(boxes[i]):
             # Skip this instance. Has no bbox. Likely lost in image cropping.
-            continue
         y1, x1, y2, x2 = boxes[i]
-        if show_bbox:
-            p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,
-                                alpha=0.7, linestyle="dashed",
-                                edgecolor=color, facecolor='none')
-            ax.add_patch(p)
 
         # Label
         if not captions:
             class_id = class_ids[i]
             score = scores[i] if scores is not None else None
             label = class_names[class_id]
+            if label == "BottleCap_Deformed":
+                color = colors[0]
+                if x1 > XR1 and y1 > YR1 and x2 < XR2 and y2 < YR2:
+                    rows_to_write.append([frame_number, x1, y1, label])
+                    print(x1, y1, x2, y2, label)
+                    BD_counter += 1
+            elif label == "BottleCap_FaceDown":
+                color = colors[1]
+                if x1 > XR1 and y1 > YR1 and x2 < XR2 and y2 < YR2:
+                    rows_to_write.append([frame_number, x1, y1, label])
+                    print(x1, y1, x2, y2, label)
+                    BFD_counter += 1
+            elif label == "BottleCap_FaceUp":
+                color = colors[2]
+                if x1 > XR1 and y1 > YR1 and x2 < XR2 and y2 < YR2:
+                    print(x1, y1, x2, y2, label)
+                    rows_to_write.append([frame_number, x1, y1, label])
+                    BFU_counter += 1
+            elif label == "ROI":
+                color = colors[3]
+                XR1 = x1,
+                YR1 = y1
+                XR2 = x2
+                YR2 = y2
+                print(x1, y1, x2, y2, label)
             caption = "{} {:.3f}".format(label, score) if score else label
         else:
             caption = captions[i]
-        ax.text(x1, y1 + 8, caption,
-                color='w', size=11, backgroundcolor="none")
+        if x1 >= XR1 and y1 >= YR1 and x2 <= XR2 and y2 <= YR2:
+            ax.text(x1, y1 + 8, caption,
+                color=color, size=11, backgroundcolor="none")
+            if not np.any(boxes[i]):
+                continue
+            if show_bbox:
+                p = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,
+                                    alpha=0.7, linestyle="dashed",
+                                    edgecolor=color, facecolor='none')
+                ax.add_patch(p)
 
         # Mask
-        mask = masks[:, :, i]
-        if show_mask:
-            masked_image = apply_mask(masked_image, mask, color)
+            mask = masks[:, :, i]
+            if show_mask:
+                masked_image = apply_mask(masked_image, mask, color)
 
         # Mask Polygon
         # Pad to ensure proper polygons for masks that touch image edges.
-        padded_mask = np.zeros(
-            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
-        padded_mask[1:-1, 1:-1] = mask
-        contours = find_contours(padded_mask, 0.5)
-        for verts in contours:
+            padded_mask = np.zeros(
+                (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+            padded_mask[1:-1, 1:-1] = mask
+            contours = find_contours(padded_mask, 0.5)
+            for verts in contours:
             # Subtract the padding and flip (y, x) to (x, y)
-            verts = np.fliplr(verts) - 1
-            p = Polygon(verts, facecolor="none", edgecolor=color)
-            ax.add_patch(p)
+                verts = np.fliplr(verts) - 1
+                p = Polygon(verts, facecolor="none", edgecolor=color)
+                ax.add_patch(p)
+    with open(output_filename, 'w') as csvfile:
+        csvwriter = csv.writer(csvfile)  
+        csvwriter.writerows(rows_to_write)
     ax.imshow(masked_image.astype(np.uint8))
+    output_image_name = output_folder + '/frame_' + str(frame_number) + '_detected.png'
+    plt.savefig(output_image_name)
+    print(f"Number of Bottle caps detected as Deformed are {BD_counter}")
+    print(f"Number of Bottle caps detected as Faceup are {BFU_counter}")
+    print(f"Number of Bottle caps detected as Facedown are {BFD_counter}")
     if auto_show:
         plt.show()
 
